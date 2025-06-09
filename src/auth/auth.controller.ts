@@ -18,12 +18,7 @@ export class AuthController {
 
   @Post('register')
   async register(@Body() registerDto: RegisterDto) {
-    return this.authService.register(
-      registerDto.username,
-      registerDto.password,
-      registerDto.name,
-      registerDto.role,
-    );
+    return this.authService.register(registerDto);
   }
 
   @UseGuards(JwtAuthGuard)

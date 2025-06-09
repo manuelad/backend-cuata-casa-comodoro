@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Product } from '@prisma/client';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -32,10 +32,15 @@ export class ProductsService {
     }
 
     async update(id: number, data: UpdateProductDto): Promise<Product> {
-        return this.prisma.product.update({
-            where: { id },
-            data,
-        });
+       try {
+         const productUpdated = await this.prisma.product.update({
+             where: { id },
+             data,
+         });
+         return productUpdated
+       } catch (error) {
+        throw new BadRequestException(error.message)
+       }
     }
 
     async remove(id: number): Promise<Product> {

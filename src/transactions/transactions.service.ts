@@ -8,7 +8,7 @@ import { firstLastMonthDays } from 'src/lib/utils';
 export class TransactionsService {
     constructor(private prisma: PrismaService) { }
 
-    async create(data: CreateTransactionDto): Promise<Transaction & { AmountConsumed: number }> {
+    async create(data: CreateTransactionDto): Promise<Transaction & { AmountConsumed: number , remainingBalance: number}> {
         const [firstDay, lastDay] = firstLastMonthDays()  
 
         const employee = await this.prisma.employee.findUnique({
@@ -61,13 +61,18 @@ export class TransactionsService {
             },
             include: {
                 employee: true,
-                products: true
+                products: {
+                    include:{
+                        product: true
+                    }
+                }
             }
         })
 
         return {
             ...transaction,
-            AmountConsumed: TotalConsumed + amountTrasaction
+            AmountConsumed: TotalConsumed + amountTrasaction,
+            remainingBalance: employee.monthlyBudget - (TotalConsumed + amountTrasaction)
         }
     }
 
@@ -99,8 +104,14 @@ export class TransactionsService {
     }
 
     async findByEmployeeId(employeeId: number): Promise<Transaction[]> {
+        const [firstDay, lastDay] = firstLastMonthDays()  
         return this.prisma.transaction.findMany({
-            where: { employeeId },
+            where: { employeeId ,
+                createdAt: {
+                    gte: firstDay,
+                    lte: lastDay
+                }
+            },
             include: {
                 employee: true,
                 products: {

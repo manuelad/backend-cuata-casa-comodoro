@@ -10,15 +10,19 @@ import { firstLastMonthDays } from 'src/lib/utils';
 export class EmployeesService {
     constructor(private prisma: PrismaService) { }
 
-    async create(data: CreateEmployeeDto): Promise<Employee> {
+    async create(data: CreateEmployeeDto): Promise<Employee & { remainingBalance: number }> {
         try {
             const employee = await this.prisma.employee.create({
                 data,
                 include: {
                     department: true,
+                    transactions: true
                 },
             });
-            return employee
+            return {
+                ...employee,
+                remainingBalance: data.monthlyBudget
+            }
         } catch (error) {
             if (error instanceof PrismaClientKnownRequestError) {
                 if (error.code === 'P2002')
@@ -29,7 +33,7 @@ export class EmployeesService {
     }
 
 
-    async findAll(): Promise<Array<Employee & { remainingBalance: number } >> {
+    async findAll(): Promise<Array<Employee & { remainingBalance: number }>> {
         try {
             const employees = await this.prisma.employee.findMany({
                 include: {
@@ -57,7 +61,7 @@ export class EmployeesService {
         });
 
         if (!employee) {
-            throw new Error(`Employee with id ${id} not found`);
+            throw new NotFoundException(`Employee with id ${id} not found`);
         }
 
         return employee;
@@ -88,6 +92,7 @@ export class EmployeesService {
             data,
             include: {
                 department: true,
+                transactions: true,
             },
         });
     }
@@ -100,32 +105,32 @@ export class EmployeesService {
 
     async remainingBalance(id: number): Promise<{ remainingBalance: number }> {
         const [firstDay, lastDay] = firstLastMonthDays()
-       try {
-         const amountProductsConsumed = await this.prisma.productTransaction.findMany({
-             where: {
-                 transaction: {
-                     employeeId: id
-                 },
-                 createdAt: {
-                     gte: firstDay,
-                     lte: lastDay
-                 }
-             },
-             include: {
-                 product: true,
-             },
-         })
- 
-         const employee = await this.findOne(id)
-         if(!employee) throw new NotFoundException('Employee not found')
- 
-         const TotalAmountProductsConsumed = Number(amountProductsConsumed.reduce((acc, curr) => acc + (curr.count * curr.product.price), 0).toFixed(2))
-         const remainingBalance = employee.monthlyBudget - TotalAmountProductsConsumed
-         return {
-             remainingBalance
-         }
-       } catch (error) {
-        throw new BadRequestException(error.message)
-       }
+        try {
+            const amountProductsConsumed = await this.prisma.productTransaction.findMany({
+                where: {
+                    transaction: {
+                        employeeId: id
+                    },
+                    createdAt: {
+                        gte: firstDay,
+                        lte: lastDay
+                    }
+                },
+                include: {
+                    product: true,
+                },
+            })
+
+            const employee = await this.findOne(id)
+            if (!employee) throw new NotFoundException('Employee not found')
+
+            const TotalAmountProductsConsumed = Number(amountProductsConsumed.reduce((acc, curr) => acc + (curr.count * curr.product.price), 0).toFixed(2))
+            const remainingBalance = employee.monthlyBudget - TotalAmountProductsConsumed
+            return {
+                remainingBalance
+            }
+        } catch (error) {
+            throw new BadRequestException(error.message)
+        }
     }
 }

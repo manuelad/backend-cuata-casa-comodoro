@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { Role } from '@prisma/client';
 import { LoginDto } from './dto/login.dto';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
 export class AuthService {
@@ -45,16 +46,17 @@ export class AuthService {
     };
   }
 
-  async register(username: string, password: string, name: string, role: Role) {
-    const hashedPassword = await bcrypt.hash(password, 10);
+  async register(userDto: RegisterDto) {
+    console.log('userDto:',userDto)
+    const hashedPassword = await bcrypt.hash(userDto.password, 10);
 
     try {
       const user = await this.prisma.user.create({
         data: {
-          username,
+          username: userDto.username,
           password: hashedPassword,
-          name,
-          role,
+          name: userDto.name,
+          role: userDto.role,
         },
       });
 

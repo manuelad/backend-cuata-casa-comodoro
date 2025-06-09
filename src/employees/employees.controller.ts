@@ -7,16 +7,19 @@ import {
     Param,
     Delete, ValidationPipe,
     UsePipes,
-    ParseIntPipe
+    ParseIntPipe,
+    UseGuards
 } from '@nestjs/common';
 import { EmployeesService } from './employees.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 @Controller('employees')
-// @UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class EmployeesController {
     constructor(private readonly employeesService: EmployeesService) { }
 
