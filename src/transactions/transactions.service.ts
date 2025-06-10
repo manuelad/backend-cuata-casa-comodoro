@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Transaction } from '@prisma/client';
+import { Prisma, Transaction } from '@prisma/client';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { firstLastMonthDays } from 'src/lib/utils';
 
@@ -8,8 +8,8 @@ import { firstLastMonthDays } from 'src/lib/utils';
 export class TransactionsService {
     constructor(private prisma: PrismaService) { }
 
-    async create(data: CreateTransactionDto): Promise<Transaction & { AmountConsumed: number , remainingBalance: number}> {
-        const [firstDay, lastDay] = firstLastMonthDays()  
+    async create(data: CreateTransactionDto): Promise<Transaction & { AmountConsumed: number, remainingBalance: number, isCancellable: boolean }> {
+        const [firstDay, lastDay] = firstLastMonthDays()
 
         const employee = await this.prisma.employee.findUnique({
             where: {
@@ -62,7 +62,7 @@ export class TransactionsService {
             include: {
                 employee: true,
                 products: {
-                    include:{
+                    include: {
                         product: true
                     }
                 }
@@ -72,7 +72,8 @@ export class TransactionsService {
         return {
             ...transaction,
             AmountConsumed: TotalConsumed + amountTrasaction,
-            remainingBalance: employee.monthlyBudget - (TotalConsumed + amountTrasaction)
+            remainingBalance: employee.monthlyBudget - (TotalConsumed + amountTrasaction),
+            isCancellable: true
         }
     }
 
@@ -104,9 +105,10 @@ export class TransactionsService {
     }
 
     async findByEmployeeId(employeeId: number): Promise<Transaction[]> {
-        const [firstDay, lastDay] = firstLastMonthDays()  
-        return this.prisma.transaction.findMany({
-            where: { employeeId ,
+        const [firstDay, lastDay] = firstLastMonthDays()
+        let transactions = await this.prisma.transaction.findMany({
+            where: {
+                employeeId,
                 createdAt: {
                     gte: firstDay,
                     lte: lastDay
@@ -121,6 +123,16 @@ export class TransactionsService {
                 }
             },
         });
+
+        const transactionsReturn = transactions.map((transaction) => {
+            const isCancellable = Date.now() - transaction.createdAt.getTime() < 60 * 10 * 1000;
+            return {
+                ...transaction,
+                isCancellable
+            }
+        })
+
+        return transactionsReturn
     }
 
     async update(
@@ -154,68 +166,97 @@ export class TransactionsService {
     }
 
     async remove(id: number): Promise<Transaction> {
-      try {
-        const [transaction, _] = await this.prisma.$transaction([
-            this.prisma.transaction.delete({
-                where: { id },
-                include: {
-                    employee: true,
-                    products: {
-                        include: {
-                            product: true
+        try {
+            const [transaction, _] = await this.prisma.$transaction([
+                this.prisma.transaction.delete({
+                    where: { id },
+                    include: {
+                        employee: true,
+                        products: {
+                            include: {
+                                product: true
+                            }
                         }
-                    }
-                },
-            }),
-            this.prisma.productTransaction.deleteMany({
-                where: { transactionId: id }
-            })
-        ])
-        return transaction
-      } catch (error) {
-        throw error
-      }
+                    },
+                }),
+                this.prisma.productTransaction.deleteMany({
+                    where: { transactionId: id }
+                })
+            ])
+            return transaction
+        } catch (error) {
+            throw error
+        }
     }
 
     async cancel(id: number): Promise<Transaction & { amount: number }> {
-      try {
-          return this.prisma.$transaction(async (prismaTx) => {
-              const transaction = await prismaTx.transaction.findUnique({
-                  where: { id },
-                  include: {
-                      products: true
-                  }
-              });
-  
-              if (!transaction) {
-                  throw new NotFoundException('Transaction not found');
-              }
-  
-              // Delete all product transactions associated with this transaction
-              await prismaTx.productTransaction.deleteMany({
-                  where: { transactionId: id }
-              });
-  
-              // Delete the transaction itself
-              const cancelTransaction = await prismaTx.transaction.delete({
-                  where: { id },
-                  include: {
-                      employee: true,
-                      products: {
-                          include: {
-                              product: true
-                          }
-                      }
-                  }
-              });
-              const amount = cancelTransaction.products.reduce((acc, curr) => acc + (curr.count * curr.product.price), 0);
-              return {
-                  ...cancelTransaction,
-                  amount
-              }
-          });
-      } catch (error) {
-        throw error
-      }
+        try {
+            return this.prisma.$transaction(async (prismaTx) => {
+                const transaction = await prismaTx.transaction.findUnique({
+                    where: { id },
+                    include: {
+                        products: true
+                    }
+                });
+
+                if (!transaction) {
+                    throw new NotFoundException('Transaction not found');
+                }
+
+                if (Date.now() - transaction.createdAt.getTime() > 60 * 10 * 1000)
+                    throw new BadRequestException('La transaccion no se puede cancelar')
+
+                // Delete all product transactions associated with this transaction
+                await prismaTx.productTransaction.deleteMany({
+                    where: { transactionId: id }
+                });
+
+                // Delete the transaction itself
+                const cancelTransaction = await prismaTx.transaction.delete({
+                    where: { id },
+                    include: {
+                        employee: true,
+                        products: {
+                            include: {
+                                product: true
+                            }
+                        }
+                    }
+                });
+                const amount = cancelTransaction.products.reduce((acc, curr) => acc + (curr.count * curr.product.price), 0);
+                return {
+                    ...cancelTransaction,
+                    amount
+                }
+            });
+        } catch (error) {
+            throw error
+        }
+    }
+
+    getTransactionsForReport(query: { employeeId?: string; productId?: string; startDate?: string; endDate?: string; }) {
+        const where: Prisma.TransactionWhereInput = {
+            employeeId: query?.employeeId ? Number(query.employeeId) : undefined,
+            products: {
+                some: {
+                    productId: query?.productId ? Number(query.productId) : undefined
+                }
+            },
+            createdAt: {
+                gte: query?.startDate ? new Date(query.startDate) : undefined,
+                lte: query?.endDate ? new Date(query.endDate) : undefined,
+            }
+        }
+        return this.prisma.transaction.findMany({
+            where,
+            include: {
+                employee: true,
+                products: {
+                    include: {
+                        product: true
+                    }
+                }
+            },
+        })
     }
 }

@@ -10,6 +10,7 @@ import {
     ValidationPipe,
     UsePipes,
     ParseIntPipe,
+    Query,
 } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { Transaction } from '@prisma/client';
@@ -35,6 +36,13 @@ export class TransactionsController {
     @Roles(Role.ADMIN, Role.CASHIER)
     findAll() {
         return this.transactionsService.findAll();
+    }
+
+    
+    @Get('report')
+    @Roles(Role.ADMIN)
+    getTransactionsForReport(@Query() query: { employeeId?: string; productId?: string; startDate?: string; endDate?: string }) {
+        return this.transactionsService.getTransactionsForReport(query);
     }
 
     @Get(':id')
@@ -69,4 +77,5 @@ export class TransactionsController {
     cancel(@Param('id', ParseIntPipe) id: number) {
         return this.transactionsService.cancel(id);
     }
+
 }
