@@ -1,3 +1,4 @@
+import { EmployeesService } from './../employees/employees.service';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, Transaction } from '@prisma/client';
@@ -6,7 +7,7 @@ import { firstLastMonthDays } from 'src/lib/utils';
 
 @Injectable()
 export class TransactionsService {
-    constructor(private prisma: PrismaService) { }
+    constructor(private prisma: PrismaService, private employeesService: EmployeesService) { }
 
     async create(data: CreateTransactionDto): Promise<Transaction & { AmountConsumed: number, remainingBalance: number, isCancellable: boolean }> {
         const [firstDay, lastDay] = firstLastMonthDays()
@@ -234,13 +235,16 @@ export class TransactionsService {
         }
     }
 
-    getTransactionsForReport(query: { employeeId?: string; productId?: string; startDate?: string; endDate?: string; }) {
+    getTransactionsForReport(query: { employeeId?: string; productId?: string; departmentId?: string; startDate?: string; endDate?: string; }) {
         const where: Prisma.TransactionWhereInput = {
             employeeId: query?.employeeId ? Number(query.employeeId) : undefined,
             products: {
                 some: {
                     productId: query?.productId ? Number(query.productId) : undefined
                 }
+            },
+            employee: {
+                departmentId: query?.departmentId ? Number(query.departmentId) : undefined
             },
             createdAt: {
                 gte: query?.startDate ? new Date(query.startDate) : undefined,
@@ -250,7 +254,11 @@ export class TransactionsService {
         return this.prisma.transaction.findMany({
             where,
             include: {
-                employee: true,
+                employee: {
+                    include: {
+                        department: true
+                    }
+                },
                 products: {
                     include: {
                         product: true

@@ -64,7 +64,7 @@ export class EmployeesService {
             throw new NotFoundException(`Employee with id ${id} not found`);
         }
 
-        return employee;
+        return employee
     }
 
     async findByUid(uid: string): Promise<Employee> {
